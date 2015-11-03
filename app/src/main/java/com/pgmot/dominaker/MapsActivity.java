@@ -122,19 +122,29 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         currentPositionMarker = map.addMarker(new MarkerOptions().position(new LatLng(latitude, longitude)));
     }
 
-    private void setAnotherUserPosition(String uuid, double latitude, double longitude) {
-        Marker marker = uuidMarkerHashMap.get(uuid);
-        if (marker == null) {
-            marker = map.addMarker(
-                    new MarkerOptions()
-                            .position(new LatLng(latitude, longitude))
-                            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
-            );
-            uuidMarkerHashMap.put(uuid, marker);
-            return;
-        }
+    private void setAnotherUserPosition(final String uuid, final double latitude, final double longitude) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                synchronized (MapsActivity.this) {
+                    Marker marker = uuidMarkerHashMap.get(uuid);
+                    if (marker == null) {
+                        Log.d(LOG_TAG, "new Another User");
 
-        marker.setPosition(new LatLng(latitude, longitude));
+                        marker = map.addMarker(
+                                new MarkerOptions()
+                                        .position(new LatLng(latitude, longitude))
+                                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
+                        );
+                        uuidMarkerHashMap.put(uuid, marker);
+                        return;
+                    }
+
+                    Log.d(LOG_TAG, "move Another User");
+                    marker.setPosition(new LatLng(latitude, longitude));
+                }
+            }
+        });
     }
 
     private void moveCamera(double latitude, double longitude) {
