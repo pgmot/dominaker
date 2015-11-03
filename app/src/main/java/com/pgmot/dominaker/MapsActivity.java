@@ -1,7 +1,9 @@
 package com.pgmot.dominaker;
 
+import android.content.SharedPreferences;
 import android.location.Location;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
 
@@ -18,6 +20,14 @@ import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.neovisionaries.ws.client.WebSocket;
+import com.neovisionaries.ws.client.WebSocketAdapter;
+import com.neovisionaries.ws.client.WebSocketException;
+import com.neovisionaries.ws.client.WebSocketFactory;
+
+import java.io.IOException;
+import java.util.Objects;
+import java.util.UUID;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, LocationListener, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
 
@@ -27,6 +37,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private GoogleApiClient googleApiClient;
     private FusedLocationProviderApi fusedLocationProviderApi = LocationServices.FusedLocationApi;
     private LocationRequest locationRequest;
+    private WebSocket websocket;
+    private boolean isWebsocketConnected = false;
+    private String uuid;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,6 +50,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
+        uuid = getUUID();
+
         locationRequest = LocationRequest.create();
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
         locationRequest.setInterval(1000);
@@ -46,6 +61,36 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 .addConnectionCallbacks(this)
                 .addOnConnectionFailedListener(this)
                 .build();
+
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String url = "wss://dominaker-staging.herokuapp.com/";
+                try {
+                    websocket = new WebSocketFactory().createSocket(url);
+                    websocket.connect();
+                    websocket.addListener(new WebSocketAdapter() {
+                        @Override
+                        public void onTextMessage(WebSocket websocket, String message) throws Exception {
+                            String[] split = message.split(",");
+                            String uuid = split[0];
+                            double latitude = Double.valueOf(split[1]);
+                            double longitude = Double.valueOf(split[2]);
+
+                            if (Objects.equals(MapsActivity.this.uuid, uuid)) {
+                                return;
+                            }
+                            Log.d(LOG_TAG, message);
+                        }
+                    });
+
+                    isWebsocketConnected = true;
+                } catch (IOException | WebSocketException e) {
+                    e.printStackTrace();
+                }
+            }
+        }).start();
     }
 
     /**
@@ -89,10 +134,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     @Override
     public void onLocationChanged(Location location) {
-        Log.d(LOG_TAG, "onLocationChanged: " + location.getLatitude() + ", " + location.getLongitude());
+        double latitude = location.getLatitude();
+        double longitude = location.getLongitude();
+        Log.d(LOG_TAG, "onLocationChanged: " + latitude + ", " + longitude);
 
-        setCurrentPosition(location.getLatitude(), location.getLongitude());
-        moveCamera(location.getLatitude(), location.getLongitude());
+        setCurrentPosition(latitude, longitude);
+        moveCamera(latitude, longitude);
+
+        if (isWebsocketConnected && websocket.isOpen()) {
+            websocket.sendText(uuid + "," + latitude + "," + longitude);
+        }
     }
 
     @Override
@@ -110,5 +161,17 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     public void onConnectionFailed(ConnectionResult connectionResult) {
         Log.d(LOG_TAG, "onConnectionFailed");
+    }
+
+    private String getUUID() {
+        final String uuidKey = "uuid";
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        String uuid = sharedPreferences.getString(uuidKey, "");
+
+        if (uuid.isEmpty()) {
+            uuid = UUID.randomUUID().toString();
+            sharedPreferences.edit().putString(uuidKey, uuid).apply();
+        }
+        return uuid;
     }
 }
