@@ -24,20 +24,9 @@ android {
     }
 }
 
-repositories {
-    maven {
-        url bitbucketReadUrl
-        credentials {
-            username bitbucketUsername
-            password bitbucketPassword
-        }
-    }
-}
-
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
     testCompile 'junit:junit:4.12'
     compile 'com.android.support:appcompat-v7:23.0.1'
     compile 'com.google.android.gms:play-services:8.1.0'
-    compile 'jp.ac.ritsumei.cs.ubi:ubilab-map-matching-library:1.1.12'
 }
