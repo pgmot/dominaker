@@ -17,6 +17,7 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
@@ -26,6 +27,7 @@ import com.neovisionaries.ws.client.WebSocketException;
 import com.neovisionaries.ws.client.WebSocketFactory;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -40,6 +42,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private WebSocket websocket;
     private boolean isWebsocketConnected = false;
     private String uuid;
+    private HashMap<String, Marker> uuidMarkerHashMap;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,6 +53,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
+        uuidMarkerHashMap = new HashMap<>();
         uuid = getUUID();
 
         locationRequest = LocationRequest.create();
@@ -82,6 +86,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 return;
                             }
                             Log.d(LOG_TAG, message);
+
+                            setAnotherUserPosition(uuid, latitude, longitude);
                         }
                     });
 
@@ -109,10 +115,26 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private void setCurrentPosition(double latitude, double longitude) {
         if (currentPositionMarker != null) {
-            currentPositionMarker.remove();
+            currentPositionMarker.setPosition(new LatLng(latitude, longitude));
+            return;
         }
 
         currentPositionMarker = map.addMarker(new MarkerOptions().position(new LatLng(latitude, longitude)));
+    }
+
+    private void setAnotherUserPosition(String uuid, double latitude, double longitude) {
+        Marker marker = uuidMarkerHashMap.get(uuid);
+        if (marker == null) {
+            marker = map.addMarker(
+                    new MarkerOptions()
+                            .position(new LatLng(latitude, longitude))
+                            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
+            );
+            uuidMarkerHashMap.put(uuid, marker);
+            return;
+        }
+
+        marker.setPosition(new LatLng(latitude, longitude));
     }
 
     private void moveCamera(double latitude, double longitude) {
@@ -139,7 +161,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         Log.d(LOG_TAG, "onLocationChanged: " + latitude + ", " + longitude);
 
         setCurrentPosition(latitude, longitude);
-        moveCamera(latitude, longitude);
 
         if (isWebsocketConnected && websocket.isOpen()) {
             websocket.sendText(uuid + "," + latitude + "," + longitude);
