@@ -1,76 +1,50 @@
 package com.pgmot.dominaker;
 
-import android.content.SharedPreferences;
-import android.location.Location;
 import android.os.Bundle;
-import android.preference.PreferenceManager;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
 
-import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.location.FusedLocationProviderApi;
-import com.google.android.gms.location.LocationListener;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.BitmapDescriptorFactory;
-import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.Marker;
-import com.google.android.gms.maps.model.MarkerOptions;
 import com.neovisionaries.ws.client.WebSocket;
 import com.neovisionaries.ws.client.WebSocketAdapter;
 import com.neovisionaries.ws.client.WebSocketException;
 import com.neovisionaries.ws.client.WebSocketFactory;
 
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.Objects;
-import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, LocationListener, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
+public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, LocationController.LocationControllerListener {
 
     private static final String LOG_TAG = "dominaker_log";
-    private GoogleMap map;
-    private Marker currentPositionMarker;
-    private GoogleApiClient googleApiClient;
-    private FusedLocationProviderApi fusedLocationProviderApi = LocationServices.FusedLocationApi;
-    private LocationRequest locationRequest;
     private WebSocket websocket;
     private boolean isWebsocketConnected = false;
     private String uuid;
-    private HashMap<String, Marker> uuidMarkerHashMap;
+    private String myMarkerUUID = "";
+    private ConcurrentHashMap<String, Ika> ikaConcurrentHashMap = new ConcurrentHashMap<>();
+    private ArrayList<Ika> ikas = new ArrayList<>();
+    private LocationController locationController;
+    private MapsController mapsController;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
-        // Obtain the SupportMapFragment and get notified when the map is ready to be used.
-        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
-                .findFragmentById(R.id.map);
+        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
-        uuidMarkerHashMap = new HashMap<>();
-        uuid = getUUID();
+        uuid = Util.getDeviceUUID(this);
 
-        locationRequest = LocationRequest.create();
-        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-        locationRequest.setInterval(1000);
-
-        googleApiClient = new GoogleApiClient.Builder(this)
-                .addApi(LocationServices.API)
-                .addConnectionCallbacks(this)
-                .addOnConnectionFailedListener(this)
-                .build();
-
+        locationController = new LocationController(this);
+        locationController.addListener(this);
 
         new Thread(new Runnable() {
             @Override
             public void run() {
-                String url = "wss://dominaker-staging.herokuapp.com/";
+                String url = "ws://192.168.5.72:4567";
                 try {
                     websocket = new WebSocketFactory().createSocket(url);
                     websocket.connect();
@@ -99,110 +73,56 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }).start();
     }
 
-    /**
-     * Manipulates the map once available.
-     * This callback is triggered when the map is ready to be used.
-     * This is where we can add markers or lines, add listeners or move the camera. In this case,
-     * we just add a marker near Sydney, Australia.
-     * If Google Play services is not installed on the device, the user will be prompted to install
-     * it inside the SupportMapFragment. This method will only be triggered once the user has
-     * installed Google Play services and returned to the app.
-     */
     @Override
     public void onMapReady(GoogleMap googleMap) {
-        map = googleMap;
+        mapsController = new MapsController(googleMap);
     }
 
     private void setCurrentPosition(double latitude, double longitude) {
-        if (currentPositionMarker != null) {
-            currentPositionMarker.setPosition(new LatLng(latitude, longitude));
+        if (myMarkerUUID.isEmpty()) {
+            myMarkerUUID = mapsController.addMarker(latitude, longitude);
             return;
         }
 
-        currentPositionMarker = map.addMarker(new MarkerOptions().position(new LatLng(latitude, longitude)));
+        mapsController.moveMarker(myMarkerUUID, latitude, longitude);
     }
 
     private void setAnotherUserPosition(final String uuid, final double latitude, final double longitude) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                synchronized (MapsActivity.this) {
-                    Marker marker = uuidMarkerHashMap.get(uuid);
-                    if (marker == null) {
-                        Log.d(LOG_TAG, "new Another User");
-
-                        marker = map.addMarker(
-                                new MarkerOptions()
-                                        .position(new LatLng(latitude, longitude))
-                                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
-                        );
-                        uuidMarkerHashMap.put(uuid, marker);
-                        return;
-                    }
-
-                    Log.d(LOG_TAG, "move Another User");
-                    marker.setPosition(new LatLng(latitude, longitude));
+                Ika ika = ikaConcurrentHashMap.get(uuid);
+                if (ika == null) {
+                    String markerUUID = mapsController.addMarker(latitude, longitude);
+                    ikaConcurrentHashMap.put(uuid, new Ika(uuid, markerUUID));
+                    return;
                 }
+
+                mapsController.moveMarker(ika.getMarkerUUID(), latitude, longitude);
             }
         });
-    }
-
-    private void moveCamera(double latitude, double longitude) {
-        float zoom = 16.0f;
-        map.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(latitude, longitude), zoom));
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        googleApiClient.connect();
+
+        locationController.startLocationController();
     }
 
     @Override
     protected void onStop() {
-        googleApiClient.disconnect();
+        locationController.stopLocationController();
+
         super.onStop();
     }
 
     @Override
-    public void onLocationChanged(Location location) {
-        double latitude = location.getLatitude();
-        double longitude = location.getLongitude();
-        Log.d(LOG_TAG, "onLocationChanged: " + latitude + ", " + longitude);
-
+    public void onLocationChanged(double latitude, double longitude) {
         setCurrentPosition(latitude, longitude);
 
         if (isWebsocketConnected && websocket.isOpen()) {
             websocket.sendText(uuid + "," + latitude + "," + longitude);
         }
-    }
-
-    @Override
-    public void onConnected(Bundle bundle) {
-        Log.d(LOG_TAG, "onConnected");
-
-        fusedLocationProviderApi.requestLocationUpdates(googleApiClient, locationRequest, this);
-    }
-
-    @Override
-    public void onConnectionSuspended(int i) {
-        Log.d(LOG_TAG, "onConnectionSuspended");
-    }
-
-    @Override
-    public void onConnectionFailed(ConnectionResult connectionResult) {
-        Log.d(LOG_TAG, "onConnectionFailed");
-    }
-
-    private String getUUID() {
-        final String uuidKey = "uuid";
-        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
-        String uuid = sharedPreferences.getString(uuidKey, "");
-
-        if (uuid.isEmpty()) {
-            uuid = UUID.randomUUID().toString();
-            sharedPreferences.edit().putString(uuidKey, uuid).apply();
-        }
-        return uuid;
     }
 }
