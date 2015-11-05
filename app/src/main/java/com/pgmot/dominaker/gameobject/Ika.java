@@ -1,4 +1,4 @@
-package com.pgmot.dominaker;
+package com.pgmot.dominaker.gameobject;
 
 /**
  * Created by mot on 11/4/15.

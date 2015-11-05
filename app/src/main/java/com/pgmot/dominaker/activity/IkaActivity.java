@@ -1,4 +1,4 @@
-package com.pgmot.dominaker;
+package com.pgmot.dominaker.activity;
 
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
@@ -11,13 +11,18 @@ import com.neovisionaries.ws.client.WebSocket;
 import com.neovisionaries.ws.client.WebSocketAdapter;
 import com.neovisionaries.ws.client.WebSocketException;
 import com.neovisionaries.ws.client.WebSocketFactory;
+import com.pgmot.dominaker.gameobject.Ika;
+import com.pgmot.dominaker.R;
+import com.pgmot.dominaker.controller.LocationController;
+import com.pgmot.dominaker.controller.MapsController;
+import com.pgmot.dominaker.util.Util;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, LocationController.LocationControllerListener {
+public class IkaActivity extends FragmentActivity implements OnMapReadyCallback, LocationController.LocationControllerListener {
 
     private static final String LOG_TAG = "dominaker_log";
     private WebSocket websocket;
@@ -56,7 +61,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             double latitude = Double.valueOf(split[1]);
                             double longitude = Double.valueOf(split[2]);
 
-                            if (Objects.equals(MapsActivity.this.uuid, uuid)) {
+                            if (Objects.equals(IkaActivity.this.uuid, uuid)) {
                                 return;
                             }
                             Log.d(LOG_TAG, message);

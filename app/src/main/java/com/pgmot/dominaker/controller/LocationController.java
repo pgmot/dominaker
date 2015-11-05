@@ -1,4 +1,4 @@
-package com.pgmot.dominaker;
+package com.pgmot.dominaker.controller;
 
 import android.content.Context;
 import android.location.Location;

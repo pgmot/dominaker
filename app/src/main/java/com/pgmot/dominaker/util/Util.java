@@ -1,4 +1,4 @@
-package com.pgmot.dominaker;
+package com.pgmot.dominaker.util;
 
 import android.content.Context;
 import android.content.SharedPreferences;
