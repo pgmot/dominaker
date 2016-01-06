@@ -49,34 +49,41 @@ public class IkaActivity extends FragmentActivity implements OnMapReadyCallback,
         new Thread(new Runnable() {
             @Override
             public void run() {
-                String url = "ws://192.168.5.72:4567";
-                try {
-                    websocket = new WebSocketFactory().createSocket(url);
-                    websocket.connect();
-                    websocket.addListener(new WebSocketAdapter() {
-                        @Override
-                        public void onTextMessage(WebSocket websocket, String message) throws Exception {
-                            String[] split = message.split(",");
-                            String uuid = split[0];
-                            double latitude = Double.valueOf(split[1]);
-                            double longitude = Double.valueOf(split[2]);
 
-                            if (Objects.equals(IkaActivity.this.uuid, uuid)) {
-                                return;
-                            }
-                            Log.d(LOG_TAG, message);
 
-                            setAnotherUserPosition(uuid, latitude, longitude);
-                        }
-                    });
-
-                    isWebsocketConnected = true;
-                } catch (IOException | WebSocketException e) {
-                    e.printStackTrace();
-                }
+                connectWebsocket();
             }
         }).start();
     }
+
+    private void connectWebsocket() {
+        String url = "ws://192.168.5.72:4567";
+        try {
+            websocket = new WebSocketFactory().createSocket(url);
+            websocket.connect();
+            websocket.addListener(new WebSocketAdapter() {
+                @Override
+                public void onTextMessage(WebSocket websocket, String message) throws Exception {
+                    String[] split = message.split(",");
+                    String uuid = split[0];
+                    double latitude = Double.valueOf(split[1]);
+                    double longitude = Double.valueOf(split[2]);
+
+                    if (Objects.equals(IkaActivity.this.uuid, uuid)) {
+                        return;
+                    }
+                    Log.d(LOG_TAG, message);
+
+                    setAnotherUserPosition(uuid, latitude, longitude);
+                }
+            });
+
+            isWebsocketConnected = true;
+        } catch (IOException | WebSocketException e) {
+            e.printStackTrace();
+        }
+    }
+
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
