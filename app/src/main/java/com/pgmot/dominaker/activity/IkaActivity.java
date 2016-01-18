@@ -1,13 +1,20 @@
 package com.pgmot.dominaker.activity;
 
+import android.graphics.Color;
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
+import android.view.MotionEvent;
+import android.view.View;
+import android.widget.Button;
 
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.LatLng;
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.neovisionaries.ws.client.WebSocket;
 import com.neovisionaries.ws.client.WebSocketAdapter;
 import com.neovisionaries.ws.client.WebSocketException;
@@ -17,13 +24,13 @@ import com.pgmot.dominaker.R;
 import com.pgmot.dominaker.controller.LocationController;
 import com.pgmot.dominaker.controller.MapsController;
 import com.pgmot.dominaker.gameobject.Ika;
+import com.pgmot.dominaker.gameobject.Stage;
 import com.pgmot.dominaker.util.Util;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 import okhttp3.MediaType;
@@ -44,14 +51,20 @@ public class IkaActivity extends FragmentActivity implements OnMapReadyCallback,
     private ArrayList<Ika> ikas = new ArrayList<>();
     private LocationController locationController;
     private MapsController mapsController;
+    private GoogleMap googleMap;
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     private OkHttpClient httpClient;
-    private static final String SERVER_URL = "dominaker-staging.herokuapp.com";
+    //private static final String SERVER_URL = "133.19.60.87:4567";
+    private static final String SERVER_URL = "192.168.0.12:4567";
+    private Button drawButton;
+    private boolean isDrawButtonTap = false;
+    private Stage stage;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
+        drawButton = (Button) findViewById(R.id.button);
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
@@ -61,6 +74,19 @@ public class IkaActivity extends FragmentActivity implements OnMapReadyCallback,
         locationController.addListener(this);
 
         httpClient = new OkHttpClient();
+        stage = new Stage();
+
+        drawButton.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    isDrawButtonTap = true;
+                } else if (event.getAction() == MotionEvent.ACTION_UP) {
+                    isDrawButtonTap = false;
+                }
+                return false;
+            }
+        });
 
         new Thread(new Runnable() {
             @Override
@@ -71,26 +97,29 @@ public class IkaActivity extends FragmentActivity implements OnMapReadyCallback,
         }).start();
     }
 
+
+    static class RegisterRequestClass {
+        public String uuid;
+
+        public RegisterRequestClass(String uuid) {
+            this.uuid = uuid;
+        }
+    }
+
+
     private int register(String uuid) {
         Gson gson = new Gson();
 
-        class RegisterRequestClass {
-            public String uuid;
-
-            public RegisterRequestClass(String uuid) {
-                this.uuid = uuid;
-            }
-        }
-
-        RequestBody requestBody = RequestBody.create(JSON, "{\"uuid\":\"" + uuid + "\"}");
+        RequestBody requestBody = RequestBody.create(JSON, gson.toJson(new RegisterRequestClass(uuid), RegisterRequestClass.class));
         Request request = new Request.Builder()
-                .url("https://" + SERVER_URL + "/register")
+                .url("http://" + SERVER_URL + "/register")
                 .post(requestBody)
                 .build();
 
         try {
             Response response = httpClient.newCall(request).execute();
             String responseString = response.body().string();
+            Log.d("dominaker-log", responseString);
             return gson.fromJson(responseString, RegisterResponseClass.class).team_id;
         } catch (IOException e) {
             e.printStackTrace();
@@ -107,9 +136,19 @@ public class IkaActivity extends FragmentActivity implements OnMapReadyCallback,
         }
     }
 
+    public static class MapStateClass {
+        public int id;
+        public int team_id;
+
+        public MapStateClass(int id, int team_id) {
+            this.id = id;
+            this.team_id = team_id;
+        }
+    }
+
     private void connectWebsocket() {
         try {
-            websocket = new WebSocketFactory().createSocket("wss://" + SERVER_URL);
+            websocket = new WebSocketFactory().createSocket("ws://" + SERVER_URL);
             websocket.addListener(new WebSocketAdapter() {
                 @Override
                 public void onConnected(WebSocket websocket, Map<String, List<String>> headers) throws Exception {
@@ -133,23 +172,39 @@ public class IkaActivity extends FragmentActivity implements OnMapReadyCallback,
                     Log.v(LOG_TAG, "onDisconnected");
 
                     // 再接続処理
-                    websocket.recreate().connect();
+                    websocket = websocket.recreate().connect();
                     isWebsocketConnected = false;
                 }
 
                 @Override
                 public void onTextMessage(WebSocket websocket, String message) throws Exception {
-                    String[] split = message.split(",");
-                    String uuid = split[0];
-                    double latitude = Double.valueOf(split[1]);
-                    double longitude = Double.valueOf(split[2]);
+                    Log.d("log", message);
 
-                    if (Objects.equals(IkaActivity.this.uuid, uuid)) {
-                        return;
-                    }
-                    Log.d(LOG_TAG, message);
+                    Request request = new Request.Builder()
+                            .url("http://" + SERVER_URL + "/map")
+                            .get()
+                            .build();
 
-                    setAnotherUserPosition(uuid, latitude, longitude);
+                    Response response = httpClient.newCall(request).execute();
+                    String responseString = response.body().string();
+                    ArrayList<MapStateClass> mapStatus = new Gson().fromJson(responseString, new TypeToken<List<MapStateClass>>() {
+                    }.getType());
+                    stage.updateMap(mapStatus);
+
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            ConcurrentHashMap<Integer, Stage.Grid> grids = stage.getGrids();
+                            for (Map.Entry<Integer, Stage.Grid> grid : grids.entrySet()) {
+                                Stage.Grid g = grid.getValue();
+                                if (g.color == -1) {
+                                    continue;
+                                }
+                                mapsController.drawRectangle(grid.getKey(), g.swLat, g.swLng, g.neLat, g.neLng, g.color == 0 ? Color.BLUE : Color.RED);
+                            }
+                        }
+                    });
+
                 }
             });
 
@@ -162,6 +217,9 @@ public class IkaActivity extends FragmentActivity implements OnMapReadyCallback,
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mapsController = new MapsController(googleMap);
+        this.googleMap = googleMap;
+
+        googleMap.moveCamera(CameraUpdateFactory.zoomTo(20));
     }
 
     private void setCurrentPosition(double latitude, double longitude) {
@@ -203,12 +261,31 @@ public class IkaActivity extends FragmentActivity implements OnMapReadyCallback,
         super.onStop();
     }
 
+    static class LocationRequestClass {
+        public String uuid;
+        public double lat;
+        public double lng;
+        public boolean draw_flag;
+
+        public LocationRequestClass(String uuid, double lat, double lng, boolean draw_flag) {
+            this.uuid = uuid;
+            this.lat = lat;
+            this.lng = lng;
+            this.draw_flag = draw_flag;
+        }
+    }
+
     @Override
     public void onLocationChanged(double latitude, double longitude) {
+        Gson gson = new Gson();
+
         setCurrentPosition(latitude, longitude);
+        googleMap.moveCamera(CameraUpdateFactory.newLatLng(new LatLng(latitude, longitude)));
 
         if (isWebsocketConnected && websocket.isOpen()) {
-            websocket.sendText(uuid + "," + latitude + "," + longitude);
+            String message = gson.toJson(new LocationRequestClass(uuid, latitude, longitude, isDrawButtonTap), LocationRequestClass.class);
+            Log.d("dominaker-log", message);
+            websocket.sendText(message);
         }
     }
 }

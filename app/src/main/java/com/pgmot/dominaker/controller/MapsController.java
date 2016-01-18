@@ -7,6 +7,8 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.Polygon;
+import com.google.android.gms.maps.model.PolygonOptions;
 import com.pgmot.dominaker.util.Util;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,7 +33,7 @@ public class MapsController {
         return addMarker(latitude, longitude, BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
     }
 
-    public String addMarker(double latitude, double longitude, BitmapDescriptor icon){
+    public String addMarker(double latitude, double longitude, BitmapDescriptor icon) {
         String uuid = Util.getUUID();
         Marker marker = map.addMarker(new MarkerOptions().position(new LatLng(latitude, longitude)).icon(icon));
 
@@ -52,7 +54,7 @@ public class MapsController {
 
     public boolean removeMarker(String uuid) {
         Marker marker = markerConcurrentHashMap.get(uuid);
-        if(marker == null){
+        if (marker == null) {
             return false;
         }
 
@@ -61,4 +63,21 @@ public class MapsController {
         return true;
     }
 
+    public void drawRectangle(int id, double lat1, double lng1, double lat2, double lng2, int color) {
+        Polygon polygon = polygonHashMap.get(id);
+        if (polygon != null) {
+            polygon.setFillColor(color);
+            return;
+        }
+
+        polygon = map.addPolygon(
+                new PolygonOptions()
+                        .add(new LatLng(lat1, lng1), new LatLng(lat1, lng2), new LatLng(lat2, lng2), new LatLng(lat2, lng1))
+                        .strokeColor(color)
+                        .fillColor(color)
+        );
+        polygonHashMap.put(id, polygon);
+    }
+
+    private ConcurrentHashMap<Integer, Polygon> polygonHashMap = new ConcurrentHashMap<>();
 }
